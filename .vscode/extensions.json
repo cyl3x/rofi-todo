@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "vadimcn.vscode-lldb",
+    "rust-lang.rust-analyzer",
+    "usernamehw.errorlens",
+    "tamasfe.even-better-toml",
+    "EditorConfig.EditorConfig",
+    "serayuzgur.crates",
+    "mkhl.direnv"
+  ]
+}

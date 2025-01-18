@@ -1,0 +1,28 @@
+[package]
+name = "rofi-todo"
+description = "A rofi mode for todo.sh"
+license = "MIT"
+readme = "README.md"
+keywords = ["rofi", "todo.sh", "todo.txt"]
+categories = ["desktop-application"]
+repository = "https://github.com/cyl3x/rofi-todo"
+authors = ["cyl3x <cyl3x@posteo.de>"]
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[build]
+rustflags = ["-C", "symbol-mangling-version=v0"]
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+rofi-mode = "0.4.1"
+todo-txt = { version = "4.1.1", features = ["config"] }
