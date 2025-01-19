@@ -20,12 +20,17 @@
           name = "rofi-todo";
           inputsFrom = [ config.packages.default ];
 
-          buildInputs = with pkgs; [
+          packages = with pkgs; [
             cargo
             clippy
             rust-analyzer
             rustc
             rustfmt
+
+            (pkgs.writeShellScriptBin "rofi-todo" ''
+            source ~/.config/todo/config
+            rofi -modi todo -show todo
+            '')
           ];
 
           RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";

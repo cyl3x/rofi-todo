@@ -24,5 +24,8 @@ codegen-units = 1
 panic = "abort"
 
 [dependencies]
+env_logger = "0.11.6"
+log = "0.4.25"
 rofi-mode = "0.4.1"
+strum = { version = "0.26.3", features = ["derive"] }
 todo-txt = { version = "4.1.1", features = ["config"] }
