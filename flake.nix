@@ -8,13 +8,17 @@
 
   outputs = inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
+      imports = [ inputs.flake-parts.flakeModules.easyOverlay ];
 
-      perSystem = { config, self', inputs', pkgs, system, ... }: {
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+
+      perSystem = { config, self', inputs', pkgs, system, ... }: rec {
         packages = rec {
           default = rofi-todo;
           rofi-todo = pkgs.callPackage ./package.nix { inherit inputs; };
         };
+
+        overlayAttrs = { inherit (packages) rofi-todo; };
 
         devShells.default = pkgs.mkShell {
           name = "rofi-todo";
