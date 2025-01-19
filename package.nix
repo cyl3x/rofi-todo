@@ -4,7 +4,7 @@
   rustPlatform,
 
   cargo,
-  rofi,
+  rofi-unwrapped,
   pkg-config,
   glib,
   cairo,
@@ -27,7 +27,7 @@ in rustPlatform.buildRustPackage rec {
   nativeBuildInputs = [
     rustPlatform.cargoSetupHook
     cargo
-    rofi
+    rofi-unwrapped
     pkg-config
   ];
 
@@ -38,7 +38,7 @@ in rustPlatform.buildRustPackage rec {
   ];
 
   meta = {
-    description = "";
+    description = cargoToml.package.description;
     homepage = "https://github.com/cyl3x/rofi-todo";
     license = lib.licenses.mit;
     maintainers = [];
