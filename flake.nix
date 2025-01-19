@@ -29,7 +29,7 @@
 
             (pkgs.writeShellScriptBin "rofi-todo" ''
             source ~/.config/todo/config
-            rofi -modi todo -show todo
+            rofi -modi todo -show todo "$@"
             '')
           ];
 
