@@ -15,6 +15,7 @@
   version = cargoToml.package.version;
 in rustPlatform.buildRustPackage rec {
   inherit pname version;
+
   src = builtins.path {
     path = lib.sources.cleanSource inputs.self;
     name = "${pname}-${version}";
@@ -25,9 +26,7 @@ in rustPlatform.buildRustPackage rec {
   cargoLock.lockFile = ./Cargo.lock;
 
   nativeBuildInputs = [
-    rustPlatform.cargoSetupHook
     cargo
-    rofi-unwrapped
     pkg-config
   ];
 
@@ -35,7 +34,13 @@ in rustPlatform.buildRustPackage rec {
     glib
     cairo
     pango
+    rofi-unwrapped
   ];
+
+  postInstall = ''
+    mkdir -p $out/lib/rofi
+    mv $out/lib/*.so $out/lib/rofi
+  '';
 
   meta = {
     description = cargoToml.package.description;
