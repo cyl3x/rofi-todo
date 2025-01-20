@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use todo_txt::task::Simple;
 
+#[derive(Clone, PartialEq, Eq)]
 pub struct Task(Simple);
 
 impl Deref for Task {

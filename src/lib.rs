@@ -6,13 +6,14 @@ use task::Task;
 use task_file::TaskFile;
 use todo_txt::Priority;
 
-mod task_file;
 mod task;
+mod task_file;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 enum Menu {
     Tasks,
     ModifyTask(usize, Option<ModifyOption>),
+    AddTask(Task),
 }
 
 #[repr(usize)]
@@ -75,6 +76,7 @@ impl<'rofi> Mode<'rofi> {
             Menu::Tasks => self.api.set_display_name("tasks"),
             Menu::ModifyTask(_, None) => self.api.set_display_name("modify"),
             Menu::ModifyTask(_, Some(_)) => self.api.set_display_name("edit"),
+            Menu::AddTask(_) => self.api.set_display_name("add"),
         }
 
         self.menu = menu;
@@ -109,11 +111,16 @@ impl<'rofi> Mode<'rofi> {
                     _ => String::new(),
                 },
             },
+            Menu::AddTask(_) => match line {
+                0 => "Confirm".into(),
+                1 => "Cancel".into(),
+                _ => String::new(),
+            },
         }
     }
 
     pub fn handle_ok(&mut self, line: usize, input: &mut rofi_mode::String) -> Action {
-        match self.menu {
+        match self.menu.clone() {
             Menu::Tasks => self.switch_menu(Menu::ModifyTask(line, None)),
             Menu::ModifyTask(task, modify) => match modify {
                 None => match ModifyOption::from_repr(line).unwrap() {
@@ -142,10 +149,6 @@ impl<'rofi> Mode<'rofi> {
                 },
                 Some(option) => {
                     match option {
-                        ModifyOption::Subject => {
-                            self.tasks[task].update(input);
-                            std::mem::take(input);
-                        }
                         ModifyOption::Priority => {
                             self.tasks[task].priority = match line {
                                 0 => Priority::lowest(),
@@ -164,6 +167,29 @@ impl<'rofi> Mode<'rofi> {
                     self.switch_menu(Menu::ModifyTask(task, None))
                 }
             },
+            Menu::AddTask(task) => {
+                if line == 0 {
+                    self.tasks.push(task);
+                }
+
+                self.switch_menu(Menu::Tasks)
+            }
+        }
+    }
+
+    pub fn handle_custom_ok(&mut self, input: &mut rofi_mode::String) -> Action {
+        match self.menu {
+            Menu::Tasks => {
+                let task = Task::new(&std::mem::take(input));
+                self.switch_menu(Menu::AddTask(task))
+            }
+            Menu::ModifyTask(task, Some(ModifyOption::Subject)) => {
+                self.tasks[task].update(input);
+                std::mem::take(input);
+
+                self.switch_menu(Menu::ModifyTask(task, None))
+            }
+            _ => Action::Reload,
         }
     }
 
@@ -193,6 +219,7 @@ impl<'rofi> Mode<'rofi> {
                 Some(_) => self.switch_menu(Menu::ModifyTask(task, None)),
                 None => self.switch_menu(Menu::Tasks),
             },
+            Menu::AddTask(_) => self.switch_menu(Menu::Tasks),
         }
     }
 }
@@ -220,6 +247,7 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
                     _ => 0,
                 },
             },
+            Menu::AddTask(_) => 2,
         }
     }
 
@@ -234,7 +262,7 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
                 false => self.handle_ok(selected, input),
                 true => self.handle_alt_ok(selected, input),
             },
-            Event::CustomInput { .. } => self.handle_ok(0, input),
+            Event::CustomInput { .. } => self.handle_custom_ok(input),
             Event::Cancel { .. } => self.handle_cancel(),
             _ => Action::Exit,
         };
@@ -262,20 +290,21 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
             return rofi_mode::format!("<span fgcolor='red'>{}</span>", error);
         }
 
-        match self.menu {
+        match &self.menu {
             Menu::Tasks => rofi_mode::String::new(),
             Menu::ModifyTask(task, modify) => match modify {
-                None => rofi_mode::format!("Task: {}", self.tasks[task].pango_string()),
+                None => rofi_mode::format!("Task: {}", self.tasks[*task].pango_string()),
                 Some(option) => match option {
                     ModifyOption::Delete => {
-                        rofi_mode::format!("Delete: {}", self.tasks[task].pango_string())
+                        rofi_mode::format!("Delete: {}", self.tasks[*task].pango_string())
                     }
                     ModifyOption::Priority => {
-                        rofi_mode::format!("Priority: {}", self.tasks[task].pango_string())
+                        rofi_mode::format!("Priority: {}", self.tasks[*task].pango_string())
                     }
-                    _ => rofi_mode::format!("Edit: {}", self.tasks[task].pango_string()),
+                    _ => rofi_mode::format!("Edit: {}", self.tasks[*task].pango_string()),
                 },
             },
+            Menu::AddTask(task) => rofi_mode::format!("Add: {}", task.pango_string()),
         }
     }
 }
