@@ -2,6 +2,8 @@ use std::ops::{Deref, DerefMut};
 
 use todo_txt::task::Simple;
 
+use crate::config::Config;
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct Task(Simple);
 
@@ -40,41 +42,52 @@ impl Task {
         self.hashtags = edited.hashtags;
     }
 
-    pub fn pango_string(&self) -> String {
-        format!(
+    pub fn pango_string(&self, config: &Config) -> String {
+        let mut string = format!(
             "{} {} {} {}",
-            self.pango_string_priority(),
-            self.pango_string_subject(),
-            self.pango_string_contexts(),
-            self.pango_string_projects(),
+            self.pango_string_priority(config),
+            self.stripped_subject(),
+            self.pango_string_contexts(config),
+            self.pango_string_projects(config),
+        );
+
+        if self.finished {
+            string = format!("<span alpha='60%'>{string}</span>")
+        }
+
+        string
+    }
+
+    pub fn pango_string_priority(&self, config: &Config) -> String {
+        format!(
+            "<span fgcolor='{}'><b>{}</b></span>",
+            config.color_priority.display_rgba(),
+            self.priority
         )
     }
 
-    pub fn pango_string_subject(&self) -> String {
-        let mut subject = self.stripped_subject();
-        if self.finished {
-            subject = format!("<span fgcolor='gray'>{subject}</span>");
-        }
-
-        subject
-    }
-
-    pub fn pango_string_priority(&self) -> String {
-        format!("<span fgcolor='red'><b>{}</b></span>", self.priority)
-    }
-
-    pub fn pango_string_projects(&self) -> String {
+    pub fn pango_string_projects(&self, config: &Config) -> String {
         self.projects
             .iter()
-            .map(|p| format!("<span fgcolor='green'>+{p}</span>"))
+            .map(|p| {
+                format!(
+                    "<span fgcolor='{}'>+{p}</span>",
+                    config.color_project.display_rgba()
+                )
+            })
             .collect::<Vec<String>>()
             .join(" ")
     }
 
-    pub fn pango_string_contexts(&self) -> String {
+    pub fn pango_string_contexts(&self, config: &Config) -> String {
         self.contexts
             .iter()
-            .map(|p| format!("<span fgcolor='orange'>@{p}</span>"))
+            .map(|p| {
+                format!(
+                    "<span fgcolor='{}'>@{p}</span>",
+                    config.color_context.display_rgba()
+                )
+            })
             .collect::<Vec<String>>()
             .join(" ")
     }

@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read, Seek, Write};
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::task::Task;
 
@@ -9,7 +9,7 @@ pub struct TaskFile {
 }
 
 impl TaskFile {
-    pub fn new(path: PathBuf) -> io::Result<Self> {
+    pub fn new(path: &Path) -> io::Result<Self> {
         let inner = File::options()
             .read(true)
             .write(true)

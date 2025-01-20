@@ -25,7 +25,10 @@ panic = "abort"
 
 [dependencies]
 env_logger = "0.11.6"
+envy = "0.4.2"
+hex_color = { version = "3.0.0", features = ["serde"] }
 log = "0.4.25"
 rofi-mode = "0.4.1"
+serde = { version = "1.0.217", features = ["serde_derive"] }
 strum = { version = "0.26.3", features = ["derive"] }
-todo-txt = { version = "4.1.1", features = ["config"] }
+todo-txt = "4.1.1"

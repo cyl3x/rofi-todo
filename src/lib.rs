@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-
+use config::Config;
 use rofi_mode::{Action, Event};
 use strum::{EnumIter, FromRepr, IntoEnumIterator};
 use task::Task;
 use task_file::TaskFile;
 use todo_txt::Priority;
 
+mod config;
 mod task;
 mod task_file;
 
@@ -29,22 +29,32 @@ enum ModifyOption {
 struct Mode<'rofi> {
     api: rofi_mode::Api<'rofi>,
     file: Option<TaskFile>,
+    config: Config,
     tasks: Vec<Task>,
     error: Option<String>,
     menu: Menu,
 }
 
 impl<'rofi> Mode<'rofi> {
-    pub fn new(api: rofi_mode::Api<'rofi>, path: PathBuf) -> Self {
+    pub fn new(api: rofi_mode::Api<'rofi>) -> Self {
         let mut state = Self {
             api,
             file: None,
+            config: Config::new(),
             tasks: vec![],
             error: None,
             menu: Menu::Tasks,
         };
 
-        match TaskFile::new(path).and_then(|mut file| file.read().map(|tasks| (file, tasks))) {
+        log::info!(
+            "todo.txt file path: {}",
+            state.config.file.to_string_lossy()
+        );
+
+        let file = TaskFile::new(&state.config.file)
+            .and_then(|mut file| file.read().map(|tasks| (file, tasks)));
+
+        match file {
             Ok((file, tasks)) => {
                 state.file = Some(file);
                 state.tasks = tasks;
@@ -86,7 +96,7 @@ impl<'rofi> Mode<'rofi> {
 
     pub fn menu(&self, line: usize) -> String {
         match self.menu {
-            Menu::Tasks => self.tasks[line].pango_string(),
+            Menu::Tasks => self.tasks[line].pango_string(&self.config),
             Menu::ModifyTask(task, modify) => match modify {
                 None => match ModifyOption::from_repr(line).unwrap() {
                     ModifyOption::Done => match self.tasks[task].finished {
@@ -204,7 +214,10 @@ impl<'rofi> Mode<'rofi> {
     pub fn handle_alt_ok(&mut self, line: usize, input: &mut rofi_mode::String) -> Action {
         match self.menu {
             Menu::Tasks => {
-                self.tasks[line].complete();
+                match self.tasks[line].finished {
+                    true => self.tasks[line].uncomplete(),
+                    false => self.tasks[line].complete(),
+                }
 
                 Action::Reload
             }
@@ -230,10 +243,7 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
     fn init(api: rofi_mode::Api<'rofi>) -> Result<Self, ()> {
         env_logger::builder().init();
 
-        let config = todo_txt::Config::from_env();
-        let path = PathBuf::from(config.todo_file);
-
-        Ok(Self::new(api, path))
+        Ok(Self::new(api))
     }
 
     fn entries(&mut self) -> usize {
@@ -293,18 +303,28 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
         match &self.menu {
             Menu::Tasks => rofi_mode::String::new(),
             Menu::ModifyTask(task, modify) => match modify {
-                None => rofi_mode::format!("Task: {}", self.tasks[*task].pango_string()),
+                None => {
+                    rofi_mode::format!("Task: {}", self.tasks[*task].pango_string(&self.config))
+                }
                 Some(option) => match option {
                     ModifyOption::Delete => {
-                        rofi_mode::format!("Delete: {}", self.tasks[*task].pango_string())
+                        rofi_mode::format!(
+                            "Delete: {}",
+                            self.tasks[*task].pango_string(&self.config)
+                        )
                     }
                     ModifyOption::Priority => {
-                        rofi_mode::format!("Priority: {}", self.tasks[*task].pango_string())
+                        rofi_mode::format!(
+                            "Priority: {}",
+                            self.tasks[*task].pango_string(&self.config)
+                        )
                     }
-                    _ => rofi_mode::format!("Edit: {}", self.tasks[*task].pango_string()),
+                    _ => {
+                        rofi_mode::format!("Edit: {}", self.tasks[*task].pango_string(&self.config))
+                    }
                 },
             },
-            Menu::AddTask(task) => rofi_mode::format!("Add: {}", task.pango_string()),
+            Menu::AddTask(task) => rofi_mode::format!("Add: {}", task.pango_string(&self.config)),
         }
     }
 }
