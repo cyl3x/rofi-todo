@@ -1,9 +1,13 @@
-use std::fmt::Write;
 use std::path::PathBuf;
 
 use rofi_mode::{Action, Event};
 use strum::{EnumIter, FromRepr, IntoEnumIterator};
-use todo_txt::{task, Priority};
+use task::Task;
+use task_file::TaskFile;
+use todo_txt::Priority;
+
+mod task_file;
+mod task;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Menu {
@@ -23,73 +27,47 @@ enum ModifyOption {
 
 struct Mode<'rofi> {
     api: rofi_mode::Api<'rofi>,
-    path: PathBuf,
-    tasks: Vec<task::Simple>,
+    file: Option<TaskFile>,
+    tasks: Vec<Task>,
     error: Option<String>,
     menu: Menu,
 }
 
 impl<'rofi> Mode<'rofi> {
     pub fn new(api: rofi_mode::Api<'rofi>, path: PathBuf) -> Self {
-        Self {
+        let mut state = Self {
             api,
-            path,
+            file: None,
             tasks: vec![],
             error: None,
             menu: Menu::Tasks,
-        }
-    }
+        };
 
-    pub fn read(&mut self) -> std::io::Result<()> {
-        if std::fs::exists(&self.path)? {
-            let content = std::fs::read_to_string(&self.path)?;
-
-            self.tasks = content.lines().map(todo_txt::parser::task).collect();
-        }
-
-        Ok(())
-    }
-
-    pub fn save(&self) -> std::io::Result<()> {
-        let contents = self.tasks.iter().fold(String::new(), |mut s, task| {
-            writeln!(&mut s, "{task}").unwrap();
-            s
-        });
-
-        std::fs::write(&self.path, contents)
-    }
-
-    pub fn formatted_task(&self, line: usize) -> String {
-        let task = &self.tasks[line];
-
-        let project = task
-            .projects
-            .iter()
-            .map(|p| format!("<span fgcolor='green'>+{p}</span>"))
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        let context = task
-            .contexts
-            .iter()
-            .map(|p| format!("<span fgcolor='orange'>@{p}</span>"))
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        let mut subject = clean_subject(task);
-        if task.finished {
-            subject = format!("<span fgcolor='gray'>{subject}</span>");
+        match TaskFile::new(path).and_then(|mut file| file.read().map(|tasks| (file, tasks))) {
+            Ok((file, tasks)) => {
+                state.file = Some(file);
+                state.tasks = tasks;
+            }
+            Err(err) => {
+                log::error!("{err:?}");
+                state.error = Some(format!("{err:?}"));
+            }
         }
 
-        let priority = task.priority.to_string();
+        state.switch_menu(Menu::Tasks);
 
-        format!(
-            "{} {} {} {}",
-            format_args!("<span fgcolor='red'><b>{priority}</b></span>"),
-            subject,
-            context,
-            project,
-        )
+        state
+    }
+
+    pub fn save(&mut self) {
+        let Some(file) = &mut self.file else {
+            return;
+        };
+
+        if let Err(err) = file.save(&self.tasks) {
+            log::error!("{err:?}");
+            self.error = Some(format!("{err:?}"));
+        }
     }
 
     pub fn switch_menu(&mut self, menu: Menu) -> Action {
@@ -106,7 +84,7 @@ impl<'rofi> Mode<'rofi> {
 
     pub fn menu(&self, line: usize) -> String {
         match self.menu {
-            Menu::Tasks => self.formatted_task(line),
+            Menu::Tasks => self.tasks[line].pango_string(),
             Menu::ModifyTask(task, modify) => match modify {
                 None => match ModifyOption::from_repr(line).unwrap() {
                     ModifyOption::Done => match self.tasks[task].finished {
@@ -165,12 +143,7 @@ impl<'rofi> Mode<'rofi> {
                 Some(option) => {
                     match option {
                         ModifyOption::Subject => {
-                            let edited = todo_txt::parser::task(input);
-
-                            self.tasks[task].subject = edited.subject;
-                            self.tasks[task].projects = edited.projects;
-                            self.tasks[task].hashtags = edited.hashtags;
-
+                            self.tasks[task].update(input);
                             std::mem::take(input);
                         }
                         ModifyOption::Priority => {
@@ -179,10 +152,12 @@ impl<'rofi> Mode<'rofi> {
                                 _ => Priority::from((line - 1) as u8),
                             }
                         }
-                        ModifyOption::Delete => if line == 0 {
-                            self.tasks.remove(task);
-                            return self.switch_menu(Menu::Tasks);
-                        },
+                        ModifyOption::Delete => {
+                            if line == 0 {
+                                self.tasks.remove(task);
+                                return self.switch_menu(Menu::Tasks);
+                            }
+                        }
                         _ => (),
                     }
 
@@ -231,16 +206,7 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
         let config = todo_txt::Config::from_env();
         let path = PathBuf::from(config.todo_file);
 
-        let mut data = Self::new(api, path);
-
-        if let Err(err) = data.read() {
-            log::error!("{err:?}");
-            data.error = Some(format!("{err:?}"));
-        };
-
-        data.switch_menu(Menu::Tasks);
-
-        Ok(data)
+        Ok(Self::new(api, path))
     }
 
     fn entries(&mut self) -> usize {
@@ -274,11 +240,7 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
         };
 
         if action == Action::Exit {
-            if let Err(err) = self.save() {
-                log::error!("{err:?}");
-                self.error = Some(format!("{err:?}"));
-                return Action::Reload;
-            };
+            self.save();
         }
 
         action
@@ -303,37 +265,19 @@ impl<'rofi> rofi_mode::Mode<'rofi> for Mode<'rofi> {
         match self.menu {
             Menu::Tasks => rofi_mode::String::new(),
             Menu::ModifyTask(task, modify) => match modify {
-                None => rofi_mode::format!("Task: {}", self.formatted_task(task)),
+                None => rofi_mode::format!("Task: {}", self.tasks[task].pango_string()),
                 Some(option) => match option {
                     ModifyOption::Delete => {
-                        rofi_mode::format!("Delete: {}", self.formatted_task(task))
+                        rofi_mode::format!("Delete: {}", self.tasks[task].pango_string())
                     }
                     ModifyOption::Priority => {
-                        rofi_mode::format!("Priority: {}", self.formatted_task(task))
+                        rofi_mode::format!("Priority: {}", self.tasks[task].pango_string())
                     }
-                    _ => rofi_mode::format!("Edit: {}", self.formatted_task(task)),
+                    _ => rofi_mode::format!("Edit: {}", self.tasks[task].pango_string()),
                 },
             },
         }
     }
-}
-
-fn clean_subject(task: &task::Simple) -> String {
-    let mut subject = task.subject.clone();
-
-    for project in &task.projects {
-        subject = subject.replace(&format!(" +{project}"), "");
-    }
-
-    for context in &task.contexts {
-        subject = subject.replace(&format!(" @{context}"), "");
-    }
-
-    for hashtag in &task.hashtags {
-        subject = subject.replace(&format!(" #{hashtag}"), "");
-    }
-
-    subject
 }
 
 rofi_mode::export_mode!(Mode);
