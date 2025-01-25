@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use config::Config;
 use rofi_mode::{Action, Event};
 use strum::{EnumIter, FromRepr, IntoEnumIterator};
@@ -83,7 +85,10 @@ impl<'rofi> Mode<'rofi> {
 
     pub fn switch_menu(&mut self, menu: Menu) -> Action {
         match menu {
-            Menu::Tasks => self.api.set_display_name("tasks"),
+            Menu::Tasks => {
+                self.sort_tasks();
+                self.api.set_display_name("tasks")
+            }
             Menu::ModifyTask(_, None) => self.api.set_display_name("modify"),
             Menu::ModifyTask(_, Some(_)) => self.api.set_display_name("edit"),
             Menu::AddTask(_) => self.api.set_display_name("add"),
@@ -190,7 +195,7 @@ impl<'rofi> Mode<'rofi> {
     pub fn handle_custom_ok(&mut self, input: &mut rofi_mode::String) -> Action {
         match self.menu {
             Menu::Tasks => {
-                let task = Task::new(&std::mem::take(input));
+                let task = Task::new(&std::mem::take(input)).created();
                 self.switch_menu(Menu::AddTask(task))
             }
             Menu::ModifyTask(task, Some(ModifyOption::Subject)) => {
@@ -234,6 +239,17 @@ impl<'rofi> Mode<'rofi> {
             },
             Menu::AddTask(_) => self.switch_menu(Menu::Tasks),
         }
+    }
+
+    pub fn sort_tasks(&mut self) {
+        self.tasks
+            .sort_by(|a, b| match a.finished.cmp(&b.finished) {
+                Ordering::Equal => match a.finished {
+                    true => a.finish_date.cmp(&b.finish_date),
+                    false => a.create_date.cmp(&b.create_date).reverse(),
+                },
+                o => o,
+            });
     }
 }
 

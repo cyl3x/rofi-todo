@@ -34,6 +34,12 @@ impl Task {
         Self(inner)
     }
 
+    pub fn created(mut self) -> Self {
+        self.create_date = Some(todo_txt::date::today());
+
+        self
+    }
+
     pub fn update(&mut self, line: &str) {
         let edited = todo_txt::parser::task(line);
 
